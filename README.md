@@ -1,4 +1,5 @@
-# MusicBot
+# MusicBot (ChickenFocker Mod)
+# THis Fork is for keeping my modded version of Just Some Bots Music Bot up to date with dev branch this isn not intend for anyone
 
 [![GitHub stars](https://img.shields.io/github/stars/Just-Some-Bots/MusicBot.svg)](https://github.com/Just-Some-Bots/MusicBot/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/Just-Some-Bots/MusicBot.svg)](https://github.com/Just-Some-Bots/MusicBot/network)
