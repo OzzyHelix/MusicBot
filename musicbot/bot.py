@@ -24,6 +24,7 @@ import discord
 
 from . import downloader
 from . import exceptions
+from datetime import datetime
 from .aliases import Aliases, AliasesDefault
 from .config import Config, ConfigDefaults
 from .constants import DISCORD_MSG_CHAR_LIMIT, AUDIO_CACHE_PATH
@@ -1397,6 +1398,7 @@ class MusicBot(discord.Client):
         write_file(self.config.auto_playlist_file, self.autoplaylist)
         log.debug("Removed {} from autoplaylist".format(url))
 
+
     async def cmd_info(self):
         """
         Usage:
@@ -1428,6 +1430,7 @@ class MusicBot(discord.Client):
             awayint = ((bullet - 6) * -1)
             await self.safe_send_message(channel, 'You were **%s** slots away from the bullet...' % awayint,
                                          expire_in=10)
+
 
     async def cmd_resetplaylist(self, player, channel):
         """
@@ -2957,7 +2960,7 @@ class MusicBot(discord.Client):
                 if percentage < 1 / progress_bar_length * i:
                     prog_bar_str += "▁"
                 else:
-                    prog_bar_str += "▃"
+                    prog_bar_str += "▂"
 
             action_text = (
                 self.str.get("cmd-np-action-streaming", "Streaming")
@@ -3028,6 +3031,20 @@ class MusicBot(discord.Client):
                 ).format(self.config.command_prefix),
                 delete_after=30,
             )
+
+    async def cmd_roulette(self, channel):
+        """
+        {command_prefix}rouleete
+        Russian passed time
+        """
+        bullet = random.randint(1, 6)
+        if bullet == 6:
+            await self.safe_send_message(channel, "**Hit!** You lose!", expire_in=10)
+        else:
+            await self.safe_send_message(channel, "**Miss!** You're safe...", expire_in=10)
+            awayint = ((bullet - 6) * -1)
+            await self.safe_send_message(channel, 'You were **%s** slots away from the bullet...' % awayint,
+                                         expire_in=10)
 
     async def cmd_summon(self, channel, guild, author, voice_channel):
         """
@@ -4406,11 +4423,11 @@ class MusicBot(discord.Client):
                 if response.reply:
                     if isinstance(content, discord.Embed):
                         content.description = "{} {}".format(
-                            message.author.mention,
+                            message.author.name,
                             content.description,
                         )
                     else:
-                        content = "{}: {}".format(message.author.mention, content)
+                        content = "{}: {}".format(message.author.name, content)
 
                 sentmsg = await self.safe_send_message(
                     message.channel,
