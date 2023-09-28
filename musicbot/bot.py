@@ -639,10 +639,19 @@ class MusicBot(discord.Client):
                 return
 
         if self.config.embeds:
+            url = player.current_entry.url
+            # Attempt to grab video ID from possible link names
+            match = re.search(
+                r"(?:youtu\.be/|youtube\.com/watch\?v=|youtube\.com/embed/)([\w-]+)",
+                url,
+            )
+
+            if match:
+                videoID = match.group(1)
+            else:
+                log.error("Unkknown link or unable to get video ID.")
             content = self._gen_embed()
             content.title = newmsg
-            url = player.current_entry.url
-            videoID = url.split("watch?v=")[1].split("&")[0]
             content.set_image(url=f"https://i1.ytimg.com/vi/{videoID}/hqdefault.jpg")
 
         # send it in specified channel
@@ -1361,6 +1370,28 @@ class MusicBot(discord.Client):
         )
         return e
 
+    @staticmethod
+    def _get_song_url_or_none(url, player):
+        """Return song url if provided or one is currently playing, else returns None"""
+        if url or (
+            player.current_entry
+            and not isinstance(player.current_entry, StreamPlaylistEntry)
+        ):
+            if not url:
+                url = player.current_entry.url
+
+            return url
+
+    def _add_url_to_autoplaylist(self, url):
+        self.autoplaylist.append(url)
+        write_file(self.config.auto_playlist_file, self.autoplaylist)
+        log.debug("Appended {} to autoplaylist".format(url))
+
+    def _remove_url_from_autoplaylist(self, url):
+        self.autoplaylist.remove(url)
+        write_file(self.config.auto_playlist_file, self.autoplaylist)
+        log.debug("Removed {} from autoplaylist".format(url))
+
     async def cmd_resetplaylist(self, player, channel):
         """
         Usage:
@@ -1519,38 +1550,64 @@ class MusicBot(discord.Client):
                 delete_after=35,
             )
 
-    async def cmd_save(self, player, url=None):
+    async def cmd_autoplaylist(self, player, option, url=None):
         """
         Usage:
-            {command_prefix}save [url]
+            {command_prefix}autoplaylist [ + | - | add | remove] [url]
 
-        Saves the specified song or current song if not specified to the autoplaylist.
+        Adds or removes the specified song or currently playing song to/from the playlist.
         """
-        if url or (
-            player.current_entry
-            and not isinstance(player.current_entry, StreamPlaylistEntry)
-        ):
-            if not url:
-                url = player.current_entry.url
+        url = self._get_song_url_or_none(url, player)
 
-            if url not in self.autoplaylist:
-                self.autoplaylist.append(url)
-                write_file(self.config.auto_playlist_file, self.autoplaylist)
-                log.debug("Appended {} to autoplaylist".format(url))
-                return Response(
-                    self.str.get(
-                        "cmd-save-success", "Added <{0}> to the autoplaylist."
-                    ).format(url)
-                )
+        if url:
+            if option in ["+", "add"]:
+                if url not in self.autoplaylist:
+                    self._add_url_to_autoplaylist(url)
+                    return Response(
+                        self.str.get(
+                            "cmd-save-success", "Added <{0}> to the autoplaylist."
+                        ).format(url),
+                        delete_after=35,
+                    )
+                else:
+                    raise exceptions.CommandError(
+                        self.str.get(
+                            "cmd-save-exists",
+                            "This song is already in the autoplaylist.",
+                        ),
+                        expire_in=20,
+                    )
+            elif option in ["-", "remove"]:
+                if url in self.autoplaylist:
+                    self._remove_url_from_autoplaylist(url)
+                    return Response(
+                        self.str.get(
+                            "cmd-unsave-success", "Removed <{0}> from the autoplaylist."
+                        ).format(url),
+                        delete_after=35,
+                    )
+                else:
+                    raise exceptions.CommandError(
+                        self.str.get(
+                            "cmd-unsave-does-not-exist",
+                            "This song is not yet in the autoplaylist.",
+                        ),
+                        expire_in=20,
+                    )
             else:
                 raise exceptions.CommandError(
                     self.str.get(
-                        "cmd-save-exists", "This song is already in the autoplaylist."
-                    )
+                        "cmd-autoplaylist-option-invalid",
+                        'Invalid option "{0}" specified, use +, -, add, or remove',
+                    ).format(option),
+                    expire_in=20,
                 )
         else:
             raise exceptions.CommandError(
-                self.str.get("cmd-save-invalid", "There is no valid song playing.")
+                self.str.get(
+                    "cmd-autoplaylist-invalid", "The supplied song link is invalid"
+                ),
+                expire_in=20,
             )
 
     @owner_only
@@ -2898,7 +2955,17 @@ class MusicBot(discord.Client):
                 )
             if self.config.embeds:
                 url = player.current_entry.url
-                videoID = url.split("watch?v=")[1].split("&")[0]
+                # Attempt to grab video ID from possible link names
+                match = re.search(
+                    r"(?:youtu\.be/|youtube\.com/watch\?v=|youtube\.com/embed/)([\w-]+)",
+                    url,
+                )
+
+                if match:
+                    videoID = match.group(1)
+                else:
+                    log.error("Unknown link or unable to get video ID.")
+
                 np_text = (
                     np_text.replace("Now ", "")
                     .replace(action_text, "")
