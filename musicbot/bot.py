@@ -9,6 +9,7 @@ import re
 import shlex
 import shutil
 import sys
+import time
 import traceback
 from collections import defaultdict
 from datetime import timedelta
@@ -16,13 +17,13 @@ from functools import wraps
 from io import BytesIO, StringIO
 from textwrap import dedent
 from typing import Optional
-from time import time
+from datetime import datetime
 import aiohttp
 import colorlog
 import discord
+
 from . import downloader
 from . import exceptions
-from datetime import datetime
 from .aliases import Aliases, AliasesDefault
 from .config import Config, ConfigDefaults
 from .constants import DISCORD_MSG_CHAR_LIMIT, AUDIO_CACHE_PATH
@@ -53,7 +54,7 @@ log.warning("Deleting logs older than 1 week")
 # Logs folder path
 path = 'logs/'
 # searches for files that are older than 7 days and deletes them
-result = [os.remove(file) for file in (os.path.join(path, file) for path, _, files in os.walk(path) for file in files) if os.stat(file).st_mtime < time() - 7 * 86400]
+result = [os.remove(file) for file in (os.path.join(path, file) for path, _, files in os.walk(path) for file in files) if os.stat(file).st_mtime < time.time() - 7 * 86400]
 log.info("old logs deleted")
 
 intents = discord.Intents.all()
@@ -592,7 +593,7 @@ class MusicBot(discord.Client):
                     "on_player_play-onChannel_playingMention",
                     "{author} - your song {title} is now playing in {channel}!",
                 ).format(
-                    author=entry.meta["author"].name,
+                    author=entry.meta["author"].mention,
                     title=entry.title,
                     channel=player.voice_client.channel.name,
                 )
@@ -1407,7 +1408,21 @@ class MusicBot(discord.Client):
         embed.set_footer(text='[ChickenFocker: {}]  [{}]'.format(BOTVERSION, timekeeper), icon_url=self.user.avatar.url)
         embed.set_author(name=self.user.name, url='https://just-some-bots.github.io/MusicBot/', icon_url=self.user.avatar.url)
         return Response(embed, delete_after=25)
-      
+
+    async def cmd_roulette(self, channel):
+        """
+        {command_prefix}rouleete
+        Russian passed time
+        """
+        bullet = random.randint(1, 6)
+        if bullet == 6:
+            await self.safe_send_message(channel, "**Hit!** You lose!", expire_in=10)
+        else:
+            await self.safe_send_message(channel, "**Miss!** You're safe...", expire_in=10)
+            awayint = ((bullet - 6) * -1)
+            await self.safe_send_message(channel, 'You were **%s** slots away from the bullet...' % awayint,
+                                         expire_in=10)
+
     async def cmd_resetplaylist(self, player, channel):
         """
         Usage:
@@ -2934,9 +2949,9 @@ class MusicBot(discord.Client):
             progress_bar_length = 30
             for i in range(progress_bar_length):
                 if percentage < 1 / progress_bar_length * i:
-                    prog_bar_str += "▁"
+                    prog_bar_str += "□"
                 else:
-                    prog_bar_str += "▂"
+                    prog_bar_str += "■"
 
             action_text = (
                 self.str.get("cmd-np-action-streaming", "Streaming")
@@ -3007,20 +3022,6 @@ class MusicBot(discord.Client):
                 ).format(self.config.command_prefix),
                 delete_after=30,
             )
-
-    async def cmd_roulette(self, channel):
-        """
-        {command_prefix}rouleete
-        Russian passed time
-        """
-        bullet = random.randint(1, 6)
-        if bullet == 6:
-            await self.safe_send_message(channel, "**Hit!** You lose!", expire_in=10)
-        else:
-            await self.safe_send_message(channel, "**Miss!** You're safe...", expire_in=10)
-            awayint = ((bullet - 6) * -1)
-            await self.safe_send_message(channel, 'You were **%s** slots away from the bullet...' % awayint,
-                                         expire_in=10)
 
     async def cmd_summon(self, channel, guild, author, voice_channel):
         """
