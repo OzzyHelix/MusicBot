@@ -22,6 +22,7 @@ import colorlog
 import discord
 from . import downloader
 from . import exceptions
+from datetime import datetime
 from .aliases import Aliases, AliasesDefault
 from .config import Config, ConfigDefaults
 from .constants import DISCORD_MSG_CHAR_LIMIT, AUDIO_CACHE_PATH
@@ -591,7 +592,7 @@ class MusicBot(discord.Client):
                     "on_player_play-onChannel_playingMention",
                     "{author} - your song {title} is now playing in {channel}!",
                 ).format(
-                    author=entry.meta["author"].mention,
+                    author=entry.meta["author"].name,
                     title=entry.title,
                     channel=player.voice_client.channel.name,
                 )
@@ -1358,16 +1359,13 @@ class MusicBot(discord.Client):
 
     def _gen_embed(self):
         """Provides a basic template for embeds"""
+        timekeeper = datetime.now().strftime('%I:%M %p %m/%d/%Y')
         e = discord.Embed()
-        e.colour = 7506394
-        e.set_footer(
-            text=self.config.footer_text, icon_url="https://i.imgur.com/gFHBoZA.png"
-        )
-        e.set_author(
-            name=self.user.name,
-            url="https://github.com/Just-Some-Bots/MusicBot",
-            icon_url=self.user.avatar.url if self.user.avatar else None,
-        )
+        e.colour = 5577355
+        e.set_footer(text='[ChickenFocker: {}]  [{}]'.format(BOTVERSION, timekeeper),
+                     icon_url=self.user.avatar.url)
+        e.set_author(name=self.user.name, url='https://just-some-bots.github.io/MusicBot/',
+                     icon_url=self.user.avatar.url)
         return e
 
     @staticmethod
@@ -1392,6 +1390,24 @@ class MusicBot(discord.Client):
         write_file(self.config.auto_playlist_file, self.autoplaylist)
         log.debug("Removed {} from autoplaylist".format(url))
 
+    async def cmd_info(self):
+        """
+        Usage:
+            {command_prefix}info
+        basic info on the bot
+        """
+        timekeeper = datetime.now().strftime('%I:%M %p %m/%d/%Y')
+        embed = discord.Embed(title='ChickenFocker', color=0x551a8b, description='ChickenFocker is a mod/fork of the Just-Some-Bots MusicBot')
+        embed.add_field(name='Source Project', value='https://github.com/Just-Some-Bots/MusicBot', inline=False)
+        embed.set_thumbnail(url=self.user.avatar.url)
+        embed.add_field(name='Version', value=BOTVERSION, inline=True)
+        embed.add_field(name='Developer', value='Ozzy Helix', inline=False)
+        embed.add_field(name='Codename', value='Ender', inline=False)
+        embed.add_field(name='based on', value='Just-Some-Bots', inline=False)
+        embed.set_footer(text='[ChickenFocker: {}]  [{}]'.format(BOTVERSION, timekeeper), icon_url=self.user.avatar.url)
+        embed.set_author(name=self.user.name, url='https://just-some-bots.github.io/MusicBot/', icon_url=self.user.avatar.url)
+        return Response(embed, delete_after=25)
+      
     async def cmd_resetplaylist(self, player, channel):
         """
         Usage:
@@ -2918,9 +2934,9 @@ class MusicBot(discord.Client):
             progress_bar_length = 30
             for i in range(progress_bar_length):
                 if percentage < 1 / progress_bar_length * i:
-                    prog_bar_str += "□"
+                    prog_bar_str += "▁"
                 else:
-                    prog_bar_str += "■"
+                    prog_bar_str += "▂"
 
             action_text = (
                 self.str.get("cmd-np-action-streaming", "Streaming")
@@ -2991,6 +3007,20 @@ class MusicBot(discord.Client):
                 ).format(self.config.command_prefix),
                 delete_after=30,
             )
+
+    async def cmd_roulette(self, channel):
+        """
+        {command_prefix}rouleete
+        Russian passed time
+        """
+        bullet = random.randint(1, 6)
+        if bullet == 6:
+            await self.safe_send_message(channel, "**Hit!** You lose!", expire_in=10)
+        else:
+            await self.safe_send_message(channel, "**Miss!** You're safe...", expire_in=10)
+            awayint = ((bullet - 6) * -1)
+            await self.safe_send_message(channel, 'You were **%s** slots away from the bullet...' % awayint,
+                                         expire_in=10)
 
     async def cmd_summon(self, channel, guild, author, voice_channel):
         """
@@ -4014,21 +4044,40 @@ class MusicBot(discord.Client):
         await self.disconnect_all_voice_clients()
         raise exceptions.RestartSignal()
 
-    async def cmd_shutdown(self, channel):
+    @owner_only
+    async def cmd_stop(self, channel, message):
         """
         Usage:
-            {command_prefix}shutdown
-
-        Disconnects from voice channels and closes the bot process.
+            {command_prefix}stop
+        turns the bot off completely
         """
-        await self.safe_send_message(channel, "\N{WAVING HAND SIGN}")
+        warning_message = await self.safe_send_message(channel, 'This will make the bot go offline.'
+                                                                ' Are you sure you want to continue?')
 
-        player = self.get_player_in(channel.guild)
-        if player and player.is_paused:
-            player.resume()
+        def check(reaction, user):
+            return user == message.author and reaction.message.id == warning_message.id  # why can't these objs be compared directly?
 
-        await self.disconnect_all_voice_clients()
-        raise exceptions.TerminateSignal()
+        reactions = ['\U0001F1FE', '\U0001F1F3']
+        for r in reactions:
+            await warning_message.add_reaction(r)
+
+        try:
+            reaction, user = await self.wait_for('reaction_add', timeout=30.0, check=check)
+        except asyncio.TimeoutError:
+            await self.safe_delete_message(warning_message)
+            return
+
+        for r in reactions:
+            await warning_message.add_reaction(r)
+
+        if str(reaction.emoji) == '\U0001F1FE':  # check
+            await self.safe_send_message(channel, "**Stopping ChickenFocker** :wave::skin-tone-1:")
+            await self.disconnect_all_voice_clients()
+            raise exceptions.TerminateSignal()
+
+        elif str(reaction.emoji) == '\U0001F1F3':
+
+            return Response(self.str.get('cmd-nopoweroff-reply', "**Stop Cancelled**"), delete_after=10)
 
     async def cmd_leaveserver(self, val, leftover_args):
         """
