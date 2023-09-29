@@ -593,7 +593,7 @@ class MusicBot(discord.Client):
                     "on_player_play-onChannel_playingMention",
                     "{author} - your song {title} is now playing in {channel}!",
                 ).format(
-                    author=entry.meta["author"].mention,
+                    author=entry.meta["author"].name,
                     title=entry.title,
                     channel=player.voice_client.channel.name,
                 )
