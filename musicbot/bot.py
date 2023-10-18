@@ -81,8 +81,6 @@ class MusicBot(discord.Client):
             aliases_file = AliasesDefault.aliases_file
 
         self.players = {}
-        self.guild_data = {}
-        self.timers = {}
         self.exit_signal = None
         self.init_ok = False
         self.cached_app_info = None
@@ -122,6 +120,8 @@ class MusicBot(discord.Client):
             "last_np_msg": None,
             "auto_paused": False,
             "availability_paused": False,
+            "guild_id": None,
+            "voice_channel_timers": None,
         }
         self.server_specific_data = defaultdict(ssd_defaults.copy)
 
@@ -680,6 +680,10 @@ class MusicBot(discord.Client):
 
     async def on_player_finished_playing(self, player, **_):
         log.debug("Running on_player_finished_playing")
+        if self.config.leave_after_song:
+            guild = player.voice_client.guild
+            if player.playlist.entries.__len__() == 0:
+                await self.disconnect_voice_client(guild)
 
         # delete last_np_msg somewhere if we have cached it
         if self.config.delete_nowplaying:
@@ -4482,14 +4486,26 @@ class MusicBot(discord.Client):
 
     async def on_timer_expired(self, voice_channel):
         guild_id = voice_channel.guild.id
-        timers = self.guild_data.get(guild_id, {}).get("voice_channel_timers", {})
+        timers = self.server_specific_data.get(guild_id, {}).get(
+            "voice_channel_timers", {}
+        )
         if voice_channel.id in timers:
             guild = self.get_guild(guild_id)
             vc = guild.get_channel(voice_channel.id)
             if vc:
-                log.info(
-                    f"Leaving voice channel {voice_channel.name} in {voice_channel.guild} due to inactivity."
-                )  # At some point I want to send this to a channel instead of just logging it
+                try:
+                    last_np_msg = last_np_msg = self.server_specific_data[guild][
+                        "last_np_msg"
+                    ]
+                    channel = last_np_msg.channel
+                    await self.safe_send_message(
+                        channel,
+                        f"Leaving voice channel {voice_channel.name} in {voice_channel.guild} due to inactivity.",
+                    )
+                except:
+                    log.info(
+                        f"Leaving voice channel {voice_channel.name} in {voice_channel.guild} due to inactivity."
+                    )
                 await self.disconnect_voice_client(guild)
             del timers[voice_channel.id]
 
@@ -4501,10 +4517,10 @@ class MusicBot(discord.Client):
             guild_id = member.guild.id
 
             # Ensure timers are initialized for this guild
-            if guild_id not in self.guild_data:
-                self.guild_data[guild_id] = {"voice_channel_timers": {}}
+            if guild_id not in self.server_specific_data:
+                self.server_specific_data[guild_id] = {"voice_channel_timers": {}}
 
-            timers = self.guild_data[guild_id]["voice_channel_timers"]
+            timers = self.server_specific_data[guild_id]["voice_channel_timers"]
 
             if before.channel and member != self.user:
                 if not any(not user.bot for user in before.channel.members):
@@ -4532,7 +4548,7 @@ class MusicBot(discord.Client):
                     timers[after.channel.id].cancel()
                     log.info(
                         f"Cancelling timer for {after.channel.name} in {after.channel.guild} as channel is no longer inactive."
-                    )  # same here
+                    )
                     del timers[after.channel.id]
 
             for channel_id in list(timers.keys()):
