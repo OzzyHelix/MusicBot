@@ -10,7 +10,7 @@ import logging
 import tempfile
 import traceback
 import subprocess
-
+from datetime import datetime
 from shutil import disk_usage, rmtree
 from base64 import b64decode
 
@@ -154,7 +154,9 @@ def finalize_logging():
         except:
             pass
 
-    with open("logs/musicbot.log", "w", encoding="utf8") as f:
+    # added code for handing logs with dates in the name
+    musicbotlog = datetime.now().strftime('logs/musicbot_%Y-%m-%d_%H-%M.log')
+    with open(musicbotlog, 'w', encoding='utf8') as f:
         tmpfile.seek(0)
         f.write(tmpfile.read())
         tmpfile.close()
