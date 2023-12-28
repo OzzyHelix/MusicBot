@@ -3482,7 +3482,7 @@ class MusicBot(discord.Client):
         log.info("Joining {0.guild.name}/{0.name}".format(author.voice.channel))
 
         return Response(
-            self.str.get("cmd-summon-reply", "Connected to `{0.name}`").format(
+            self.str.get("cmd-summon-reply", "Connected to **{0.name}**").format(
                 author.voice.channel
             ),
             delete_after=30,
