@@ -5070,7 +5070,6 @@ class MusicBot(discord.Client):
                     f"Leaving voice channel {voice_channel.name} in {voice_channel.guild} due to inactivity."
                 )
             await self.disconnect_voice_client(guild)
-            
 
     async def on_voice_state_update(self, member, before, after):
         if not self.init_ok:
@@ -5080,10 +5079,11 @@ class MusicBot(discord.Client):
             guild = member.guild
             event, active = self.server_specific_data[guild.id]["inactive_vc_timer"]
 
-
-            # Ensure timers are initialized for this guild
-            if guild_id not in self.server_specific_data:
-                self.server_specific_data[guild_id] = {"voice_channel_timers": {}}
+            if before.channel and self.user in before.channel.members:
+                if str(before.channel.id) in str(self.config.autojoin_channels):
+                    log.info(
+                        f"Ignoring {before.channel.name} in {before.channel.guild} as it is a binded voice channel."
+                    )
 
                 elif not any(not user.bot for user in before.channel.members):
                     log.info(
@@ -5096,26 +5096,25 @@ class MusicBot(discord.Client):
                         active
                     ):  # Added to not spam the console with the message for every person that joins
                         log.info(
-                            f"Started timer for inactive channel {before.channel.name} in {before.channel.guild}"
+                            f"A user joined {after.channel.name}, cancelling timer."
                         )
-                    if str(before.channel.id) in str(self.config.autojoin_channels):
-                        log.info(
-                            f"Ignoring {before.channel.name} in {before.channel.guild} as it is a binded voice channel."
-                        )
-            elif after.channel:
-                if after.channel.id in timers:
-                    timers[after.channel.id].cancel()
+                    event.set()
+
+            if (
+                member == self.user and before.channel and after.channel
+            ):  # bot got moved from channel to channel
+                if not any(not user.bot for user in after.channel.members):
                     log.info(
-                        f"Cancelling timer for {after.channel.name} in {after.channel.guild} as channel is no longer inactive."
+                        f"The bot got moved and the voice channel {after.channel.name} is empty. Handling timeouts."
                     )
-                    
                     self.loop.create_task(self.handle_vc_inactivity(guild))
                 else:
                     if active:
                         log.info(
-                            f"Cancelling timer for {channel.name} in {channel.guild} as channel is no longer inactive."
+                            f"The bot got moved and the voice channel {after.channel.name} is not empty."
                         )
-                        del timers[channel_id]
+                        event.set()
+
 
         if before.channel:
             channel = before.channel
