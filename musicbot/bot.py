@@ -19,12 +19,14 @@ from functools import wraps
 from io import BytesIO, StringIO
 from textwrap import dedent
 from typing import Optional
+from datetime import datetime
 import aiohttp
 import colorlog
 import discord
 
 from . import downloader
 from . import exceptions
+from datetime import datetime
 from .aliases import Aliases, AliasesDefault
 from .config import Config, ConfigDefaults
 from .constants import DISCORD_MSG_CHAR_LIMIT
@@ -127,7 +129,6 @@ class MusicBot(discord.Client):
             "command_prefix": None,
             "session_prefix_history": set(),  # only populated by changing prefixes.
             "last_np_msg": None,
-            "availability_paused": False,
             "auto_paused": False,
             "halt_playlist_unpack": False,
             "inactive_player_timer": (
@@ -138,6 +139,9 @@ class MusicBot(discord.Client):
                 asyncio.Event(),
                 False,
             ),  # The boolean is going show if the timeout is active or not
+            "availability_paused": False,
+            "guild_id": None,
+            "voice_channel_timers": None,
         }
         self.server_specific_data = defaultdict(ssd_defaults.copy)
 
@@ -670,7 +674,7 @@ class MusicBot(discord.Client):
                     "on_player_play-onChannel_playingMention",
                     "{author} - your song {title} is now playing in {channel}!",
                 ).format(
-                    author=entry.meta["author"].mention,
+                    author=entry.meta["author"].name,
                     title=entry.title,
                     channel=player.voice_client.channel.name,
                 )
@@ -1526,16 +1530,13 @@ class MusicBot(discord.Client):
 
     def _gen_embed(self):
         """Provides a basic template for embeds"""
+        timekeeper = datetime.now().strftime('%I:%M %p %m/%d/%Y')
         e = discord.Embed()
-        e.colour = 7506394
-        e.set_footer(
-            text=self.config.footer_text, icon_url="https://i.imgur.com/gFHBoZA.png"
-        )
-        e.set_author(
-            name=self.user.name,
-            url="https://github.com/Just-Some-Bots/MusicBot",
-            icon_url=self.user.avatar.url if self.user.avatar else None,
-        )
+        e.colour = 5577355
+        e.set_footer(text='[ChickenFocker: {}]  [{}]'.format(BOTVERSION, timekeeper),
+                     icon_url=self.user.avatar.url)
+        e.set_author(name=self.user.name, url='https://just-some-bots.github.io/MusicBot/',
+                     icon_url=self.user.avatar.url)
         return e
 
     @staticmethod
@@ -1633,6 +1634,39 @@ class MusicBot(discord.Client):
                 False,
             )
             event.clear()
+
+    async def cmd_info(self):
+        """
+        Usage:
+            {command_prefix}info
+        basic info on the bot
+        """
+        timekeeper = datetime.now().strftime('%I:%M %p %m/%d/%Y')
+        embed = discord.Embed(title='ChickenFocker', color=0x551a8b, description='ChickenFocker is a mod/fork of the Just-Some-Bots MusicBot')
+        embed.add_field(name='Source Project', value='https://github.com/Just-Some-Bots/MusicBot', inline=False)
+        embed.set_thumbnail(url=self.user.avatar.url)
+        embed.add_field(name='Version', value=BOTVERSION, inline=True)
+        embed.add_field(name='Developer', value='Ozzy Helix', inline=False)
+        embed.add_field(name='Codename', value='Ender', inline=False)
+        embed.add_field(name='based on', value='Just-Some-Bots', inline=False)
+        embed.set_footer(text='[ChickenFocker: {}]  [{}]'.format(BOTVERSION, timekeeper), icon_url=self.user.avatar.url)
+        embed.set_author(name=self.user.name, url='https://just-some-bots.github.io/MusicBot/', icon_url=self.user.avatar.url)
+        return Response(embed, delete_after=25)
+
+    async def cmd_roulette(self, channel):
+        """
+        {command_prefix}rouleete
+        Russian passed time
+        """
+        bullet = random.randint(1, 6)
+        if bullet == 6:
+            await self.safe_send_message(channel, "**Hit!** You lose!", expire_in=10)
+        else:
+            await self.safe_send_message(channel, "**Miss!** You're safe...", expire_in=10)
+            awayint = ((bullet - 6) * -1)
+            await self.safe_send_message(channel, 'You were **%s** slots away from the bullet...' % awayint,
+                                         expire_in=10)
+
 
     async def reset_player_inactivity(self, player):
         if not self.config.leave_player_inactive_for:
@@ -3288,9 +3322,9 @@ class MusicBot(discord.Client):
             progress_bar_length = 30
             for i in range(progress_bar_length):
                 if percentage < 1 / progress_bar_length * i:
-                    prog_bar_str += "□"
+                    prog_bar_str += "▁"
                 else:
-                    prog_bar_str += "■"
+                    prog_bar_str += "▂"
 
             action_text = (
                 self.str.get("cmd-np-action-streaming", "Streaming")
@@ -3365,6 +3399,20 @@ class MusicBot(discord.Client):
                 ).format(self._get_guild_cmd_prefix(channel.guild)),
                 delete_after=30,
             )
+
+    async def cmd_roulette(self, channel):
+        """
+        {command_prefix}rouleete
+        Russian passed time
+        """
+        bullet = random.randint(1, 6)
+        if bullet == 6:
+            await self.safe_send_message(channel, "**Hit!** You lose!", expire_in=10)
+        else:
+            await self.safe_send_message(channel, "**Miss!** You're safe...", expire_in=10)
+            awayint = ((bullet - 6) * -1)
+            await self.safe_send_message(channel, 'You were **%s** slots away from the bullet...' % awayint,
+                                         expire_in=10)
 
     async def cmd_summon(self, channel, guild, author, voice_channel):
         """
@@ -3929,6 +3977,7 @@ class MusicBot(discord.Client):
                             )
                         )
                     self.config.auto_playlist = True
+                    await self.on_player_finished_playing(player)
             elif value in bool_n:
                 if not self.config.auto_playlist:
                     raise exceptions.CommandError(
@@ -4528,7 +4577,7 @@ class MusicBot(discord.Client):
         Forces the bot leave the current voice channel.
         """
         await self.disconnect_voice_client(guild)
-        return Response("Disconnected from `{0.name}`".format(guild), delete_after=20)
+        return Response("Disconnected from **{0.name}**".format(guild), delete_after=20)
 
     async def cmd_restart(self, channel):
         """
@@ -4552,21 +4601,40 @@ class MusicBot(discord.Client):
         await self.disconnect_all_voice_clients()
         raise exceptions.RestartSignal()
 
-    async def cmd_shutdown(self, channel):
+    @owner_only
+    async def cmd_stop(self, channel, message):
         """
         Usage:
-            {command_prefix}shutdown
-
-        Disconnects from voice channels and closes the bot process.
+            {command_prefix}stop
+        turns the bot off completely
         """
-        await self.safe_send_message(channel, "\N{WAVING HAND SIGN}")
+        warning_message = await self.safe_send_message(channel, 'This will make the bot go offline.'
+                                                                ' Are you sure you want to continue?')
 
-        player = self.get_player_in(channel.guild)
-        if player and player.is_paused:
-            player.resume()
+        def check(reaction, user):
+            return user == message.author and reaction.message.id == warning_message.id  # why can't these objs be compared directly?
 
-        await self.disconnect_all_voice_clients()
-        raise exceptions.TerminateSignal()
+        reactions = ['\U0001F1FE', '\U0001F1F3']
+        for r in reactions:
+            await warning_message.add_reaction(r)
+
+        try:
+            reaction, user = await self.wait_for('reaction_add', timeout=30.0, check=check)
+        except asyncio.TimeoutError:
+            await self.safe_delete_message(warning_message)
+            return
+
+        for r in reactions:
+            await warning_message.add_reaction(r)
+
+        if str(reaction.emoji) == '\U0001F1FE':  # check
+            await self.safe_send_message(channel, "**Stopping ChickenFocker** :wave::skin-tone-1:")
+            await self.disconnect_all_voice_clients()
+            raise exceptions.TerminateSignal()
+
+        elif str(reaction.emoji) == '\U0001F1F3':
+
+            return Response(self.str.get('cmd-nopoweroff-reply', "**Stop Cancelled**"), delete_after=10)
 
     async def cmd_leaveserver(self, val, leftover_args):
         """
@@ -4895,11 +4963,11 @@ class MusicBot(discord.Client):
                 if response.reply:
                     if isinstance(content, discord.Embed):
                         content.description = "{} {}".format(
-                            message.author.mention,
+                            message.author.name,
                             content.description,
                         )
                     else:
-                        content = "{}: {}".format(message.author.mention, content)
+                        content = "{}: {}".format(message.author.name, content)
 
                 sentmsg = await self.safe_send_message(
                     message.channel,
@@ -5002,6 +5070,7 @@ class MusicBot(discord.Client):
                     f"Leaving voice channel {voice_channel.name} in {voice_channel.guild} due to inactivity."
                 )
             await self.disconnect_voice_client(guild)
+            
 
     async def on_voice_state_update(self, member, before, after):
         if not self.init_ok:
@@ -5011,11 +5080,10 @@ class MusicBot(discord.Client):
             guild = member.guild
             event, active = self.server_specific_data[guild.id]["inactive_vc_timer"]
 
-            if before.channel and self.user in before.channel.members:
-                if str(before.channel.id) in str(self.config.autojoin_channels):
-                    log.info(
-                        f"Ignoring {before.channel.name} in {before.channel.guild} as it is a binded voice channel."
-                    )
+
+            # Ensure timers are initialized for this guild
+            if guild_id not in self.server_specific_data:
+                self.server_specific_data[guild_id] = {"voice_channel_timers": {}}
 
                 elif not any(not user.bot for user in before.channel.members):
                     log.info(
@@ -5028,24 +5096,26 @@ class MusicBot(discord.Client):
                         active
                     ):  # Added to not spam the console with the message for every person that joins
                         log.info(
-                            f"A user joined {after.channel.name}, cancelling timer."
+                            f"Started timer for inactive channel {before.channel.name} in {before.channel.guild}"
                         )
-                    event.set()
-
-            if (
-                member == self.user and before.channel and after.channel
-            ):  # bot got moved from channel to channel
-                if not any(not user.bot for user in after.channel.members):
+                    if str(before.channel.id) in str(self.config.autojoin_channels):
+                        log.info(
+                            f"Ignoring {before.channel.name} in {before.channel.guild} as it is a binded voice channel."
+                        )
+            elif after.channel:
+                if after.channel.id in timers:
+                    timers[after.channel.id].cancel()
                     log.info(
-                        f"The bot got moved and the voice channel {after.channel.name} is empty. Handling timeouts."
+                        f"Cancelling timer for {after.channel.name} in {after.channel.guild} as channel is no longer inactive."
                     )
+                    
                     self.loop.create_task(self.handle_vc_inactivity(guild))
                 else:
                     if active:
                         log.info(
-                            f"The bot got moved and the voice channel {after.channel.name} is not empty."
+                            f"Cancelling timer for {channel.name} in {channel.guild} as channel is no longer inactive."
                         )
-                        event.set()
+                        del timers[channel_id]
 
         if before.channel:
             channel = before.channel
