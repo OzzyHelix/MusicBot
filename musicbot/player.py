@@ -162,51 +162,7 @@ class MusicPlayer(EventEmitter, Serializable):
             return
 
         if not self.bot.config.save_videos and entry:
-            if not isinstance(entry, StreamPlaylistEntry):
-                if any([entry.filename == e.filename for e in self.playlist.entries]):
-                    log.debug(
-                        'Skipping deletion of "{}", found song in queue'.format(
-                            entry.filename
-                        )
-                    )
-
-                else:
-                    log.debug(
-                        "Deleting file: {}".format(os.path.relpath(entry.filename))
-                    )
-                    filename = entry.filename
-                    for x in range(30):
-                        try:
-                            os.unlink(filename)
-                            log.debug("File deleted: {0}".format(filename))
-                            break
-                        except PermissionError as e:
-                            if e.winerror == 32:  # File is in use
-                                log.error(
-                                    "Can't delete file, it is currently in use: {0}".format(
-                                        filename
-                                    )
-                                )
-                        except FileNotFoundError:
-                            log.debug(
-                                "Could not find delete {} as it was not found. Skipping.".format(
-                                    filename
-                                ),
-                                exc_info=True,
-                            )
-                            break
-                        except Exception:
-                            log.error(
-                                "Error trying to delete {}".format(filename),
-                                exc_info=True,
-                            )
-                            break
-                    else:
-                        print(
-                            "[Config:SaveVideos] Could not delete file {}, giving up and moving on".format(
-                                os.path.relpath(filename)
-                            )
-                        )
+            self.loop.create_task(self._handle_file_cleanup(entry))
 
         self.emit("finished-playing", player=self, entry=entry)
 
@@ -238,7 +194,7 @@ class MusicPlayer(EventEmitter, Serializable):
             if self.is_stopped or _continue:
                 try:
                     entry = await self.playlist.get_next_entry()
-                except:
+                except IndexError:
                     log.warning("Failed to get entry, retrying", exc_info=True)
                     self.loop.call_later(0.1, self.play)
                     return
@@ -299,6 +255,50 @@ class MusicPlayer(EventEmitter, Serializable):
                 stderr_thread.start()
 
                 self.emit("play", player=self, entry=entry)
+
+    async def _handle_file_cleanup(self, entry):
+        if not isinstance(entry, StreamPlaylistEntry):
+            if any([entry.filename == e.filename for e in self.playlist.entries]):
+                log.debug(
+                    'Skipping deletion of "{}", found song in queue'.format(
+                        entry.filename
+                    )
+                )
+            else:
+                log.debug("Deleting file: {}".format(os.path.relpath(entry.filename)))
+                filename = entry.filename
+                for x in range(30):
+                    try:
+                        os.unlink(filename)
+                        log.debug("File deleted: {0}".format(filename))
+                        break
+                    except PermissionError as e:
+                        if e.winerror == 32:  # File is in use
+                            log.error(
+                                "Can't delete file, it is currently in use: {0}".format(
+                                    filename
+                                )
+                            )
+                    except FileNotFoundError:
+                        log.debug(
+                            "Could not find delete {} as it was not found. Skipping.".format(
+                                filename
+                            ),
+                            exc_info=True,
+                        )
+                        break
+                    except Exception:
+                        log.error(
+                            "Error trying to delete {}".format(filename),
+                            exc_info=True,
+                        )
+                        break
+                else:
+                    print(
+                        "[Config:SaveVideos] Could not delete file {}, giving up and moving on".format(
+                            os.path.relpath(filename)
+                        )
+                    )
 
     def __json__(self):
         return self._enclose_json(
@@ -406,7 +406,7 @@ def filter_stderr(stderr: io.BytesIO, future: asyncio.Future):
 def check_stderr(data: bytes):
     try:
         data = data.decode("utf8")
-    except:
+    except UnicodeDecodeError:
         log.ffmpeg("Unknown error decoding message from ffmpeg", exc_info=True)
         return True  # fuck it
 
